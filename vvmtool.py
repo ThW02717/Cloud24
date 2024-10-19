@@ -257,9 +257,12 @@ class VVMTools:
 
     # Given any time-related function (e.g. def A(t)), the function will be parallelized
     def func_time_parallel(self, 
-                           func, 
+                           func,
                            time_steps=list(range(0, 720, 1)), 
+                           domain_range=(None, None, None, None, None, None),  # (k1, k2, j1, j2, i1, i2)
                            cores=20):
+        self._Range_tuple_check(domain_range)
+        
         if type(time_steps) == np.ndarray:
             time_steps = time_steps.tolist()
             
@@ -272,30 +275,84 @@ class VVMTools:
         
         # Combine and return the results
         return np.squeeze(np.array(results))
-
-
-    def cal_TKE(self, t):
-        u = np.squeeze(self.get_var("u", t).to_numpy())
-        v = np.squeeze(self.get_var("v", t).to_numpy())
-        w = np.squeeze(self.get_var("w", t).to_numpy())
+    ###########################################################################################
+    # 2D MAP Data
     
-        u_inter = (u[:, :, 1:] + u[:, :, :-1])[1:, 1:] / 2
-        v_inter = (v[:, 1:] + v[:, :-1])[1:, :, 1:] / 2
-        w_inter = (w[1:] + w[:-1])[:, 1:, 1:] / 2
-        TKE = np.mean(u_inter ** 2 + v_inter ** 2 + w_inter ** 2, axis=(1, 2))
+    ############################################################################################
+    # TKE, ENS, Perturbation flux Domain Average
+    def cal_TKE(self, t, domain_range=(None, None, None, None, None, None)):
+        u = self.get_var("u", t, domain_range=domain_range, numpy=True)
+        v = self.get_var("v", t, domain_range=domain_range, numpy=True)
+        w = self.get_var("w", t, domain_range=domain_range, numpy=True)
+        TKE = np.mean(u ** 2 + v ** 2 + w ** 2, axis=(1, 2))
         return TKE
 
-    def cal_Enstrophy(self, t):
-        xi = np.squeeze(self.get_var("xi", t).to_numpy())
-        eta = np.squeeze(self.get_var("eta_2", t).to_numpy())
+    def cal_ENS(self, t, domain_range=(None, None, None, None, None, None)):
+        xi = np.squeeze(self.get_var("xi", t, domain_range=domain_range).to_numpy())
+        eta = np.squeeze(self.get_var("eta_2", t, domain_range=domain_range).to_numpy())
         if eta.shape != xi.shape:
-            eta = np.squeeze(self.get_var("eta", t).to_numpy())
-        zeta = np.squeeze(self.get_var("zeta", t).to_numpy())
-    
-        xi_inter = (xi[:, 1:, 1:] + xi[:, :-1, 1:] + xi[:, 1:, :-1] + xi[:, :-1, :-1])[1:] / 4
-        eta_inter = (eta[1:, :, 1:] + eta[:-1, :, 1:] + eta[1:, :, :-1] + eta[:-1, :, :-1])[:, 1:] / 4
-        zeta_inter = (zeta[1:, 1:] + zeta[:-1, 1:] + zeta[1:, :-1] + zeta[:-1, :-1])[:, :, 1:] / 4
-        enstrophy = np.mean(xi_inter ** 2 + eta_inter ** 2 + zeta_inter ** 2, axis=(1, 2))
+            eta = np.squeeze(self.get_var("eta", t, domain_range=domain_range).to_numpy())
+        zeta = np.squeeze(self.get_var("zeta", t, domain_range=domain_range).to_numpy())
+        enstrophy = np.mean(xi** 2 + eta** 2 + zeta** 2, axis=(1, 2))
         return enstrophy
+    
+    def cal_WTH(self, t, domain_range=(None, None, None, None, None, None)):
+        w = self.get_var('w', t, domain_range = domain_range, numpy=True)
+        th = self.get_var('th', t, domain_range = domain_range, numpy=True)
+        w_mean = self.get_var('w', time=t, domain_range = domain_range, numpy=True, 
+                              compute_mean=True, axis=(1, 2))[:, np.newaxis, np.newaxis]
+        th_mean = self.get_var('th', time=t, domain_range = domain_range, numpy=True, 
+                               compute_mean=True, axis=(1, 2))[:, np.newaxis, np.newaxis]
+        w_prime = w - w_mean
+        th_prime = th - th_mean
+        w_th = np.nanmean(w_prime * th_prime, axis=(1, 2))
+        return w_th
+    
+    ######################################################################################
+    ## 5 Kinds of Boundary Layer Height
 
-   
+    # max dtheta/dz
+    def blGrad(self, t, domain_range = (None, None, None, None, None, None)):
+        th = self.get_var('th', t, numpy=True, domain_range = domain_range, compute_mean = True, axis = (1,2))
+        zc = self.get_var('zc', t, numpy=True)
+        dth = np.gradient(th)
+        max_index = np.argmax(dth)
+        pbl_depth = zc[max_index]
+        return pbl_depth
+    
+    # thata[0]+0.5
+    def blPointfive(self, t, domain_range = (None, None, None, None, None, None)):
+        th = self.get_var('th', t, numpy=True, domain_range = domain_range, compute_mean = True, axis = (1,2))
+        zc = self.get_var('zc', t, numpy=True)
+        for i in range(50):
+            if (th[i] >= th[0]+0.5).any():
+                pbl_depth = zc[i]
+                break
+        return pbl_depth
+    
+    '''
+        Threshold:
+        TKE: 0.3
+        ENS: 3e-5
+        WTH: 0.01
+        EX: blTKE=vvm.blOther('TKE', 0.3, t, domain_range = domain)
+    '''
+    def blOther(self, var_name, threshold, t, domain_range=(None, None, None, None, None, None)):
+        zc = self.get_var("zc", 0).to_numpy()
+        if var_name == "TKE":
+            var = self.func_time_parallel(self.cal_TKE, t, domain_range=domain_range, cores=20)
+        elif var_name == "ENS":
+            var = self.func_time_parallel(self.cal_ENS, t, domain_range=domain_range, cores=20)
+        elif var_name == "WTH":
+            var = self.func_time_parallel(self.cal_WTH, t, domain_range=domain_range, cores=20)
+        else:
+            raise ValueError(f"Unknown variable name: {var_name}")
+        positive_mask = np.swapaxes(var, 0, 1) > threshold
+        indices = np.argwhere(positive_mask)
+        h = np.zeros(len(t))  
+        for j_index, i_index in indices:
+            if j_index + 1 < len(zc):
+                h[i_index] = max(h[i_index], zc[j_index + 1])
+
+        return h
+    
