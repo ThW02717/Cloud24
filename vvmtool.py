@@ -276,7 +276,20 @@ class VVMTools:
         # Combine and return the results
         return np.squeeze(np.array(results))
     ###########################################################################################
-    # 2D MAP Data
+
+    # 2D MAP Data of of specif Z in the X, Y domain 
+    def horizontalMap (self, var, time , z):
+        variable = self.get_var(var , time, domain_range=(z, z + 1, None, None, None, None), numpy=True)
+        return variable
+    # Vertical Profile data of specifc (x, y)
+    def verticalPro (self, var, time ,x , y):
+        variable = self.get_var(var , time, domain_range=(None, None, y, y + 1, x, x + 1), numpy=True)
+        return variable
+    # Cross Section data of specific y line
+    def crossSection (self, var, time , y):
+        variable = self.get_var(var , time, domain_range=(None, None, y, y+1, None, None), numpy=True)
+        return variable
+    
     
     ############################################################################################
     # TKE, ENS, Perturbation flux Domain Average
@@ -330,6 +343,7 @@ class VVMTools:
                 break
         return pbl_depth
     
+    # TKE, ENS, WTH
     '''
         Threshold:
         TKE: 0.3
@@ -355,4 +369,3 @@ class VVMTools:
                 h[i_index] = max(h[i_index], zc[j_index + 1])
 
         return h
-    
