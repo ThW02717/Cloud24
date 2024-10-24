@@ -20,6 +20,10 @@ class VVMPlot:
         self.figsize = figsize
         self.cmap = cmap
 
+        self.domain_urban = (None, None, None, None, 0, 64)      # domain_range=plotter.domain_urban
+        self.domain_grass = (None, None, None, None, 64, 128)    # domain_range=plotter.domain_grass
+        self.domain_all   = (None, None, None, None, None, None) 
+
     def _plot_contour(self, data, zc, title, path=None, levels=None):
         """
         Internal method for plotting contour and shading.
@@ -37,7 +41,7 @@ class VVMPlot:
             plt.savefig(path, dpi=200)
         plt.show()
 
-    def plot_bl(self, vvm_tools, t_range, domain_range, save_path=None):
+    def plot_bl(self, vvm_tools, t_range, domain_range=None, save_path=None):
         """
         Plots the five boundary layer height methods from the VVMTools class.
 
@@ -47,12 +51,17 @@ class VVMPlot:
             An instance of the VVMTools class used to retrieve data.
         t_range : list
             A list of time indices for the plot.
-        domain_range : tuple
-            A tuple specifying the domain range in VVMTools.
+        domain_range : tuple, optional
+            A tuple specifying the domain range in VVMTools. 
+            If None, defaults to urban domain.
         save_path : str, optional
             File path to save the figure.
         """
         zc = vvm_tools.get_var('zc', 0, numpy=True)
+
+        # Use predefined domain if domain_range is not provided
+        if domain_range is None:
+            domain_range = self.domain_all  # Use urban domain as default
 
         # Get boundary layer heights using different methods
         bl_grad = vvm_tools.func_time_parallel(vvm_tools.blGrad, t_range, domain_range=domain_range, cores=5)
