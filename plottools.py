@@ -24,6 +24,7 @@ class VVMPlot:
         """
         Internal method for plotting contour and shading.
         """
+        print("Data shape:", data.shape)  # Check the shape of the data
         plt.figure(figsize=self.figsize)
         if levels is None:
             levels = np.linspace(np.nanmin(data), np.nanmax(data), 50)
@@ -55,6 +56,7 @@ class VVMPlot:
 
         # Get boundary layer heights using different methods
         bl_grad = vvm_tools.func_time_parallel(vvm_tools.blGrad, t_range, domain_range=domain_range, cores=5)
+        print("bl_grad shape:", bl_grad.shape)
         bl_pointfive = vvm_tools.func_time_parallel(vvm_tools.blPointfive, t_range, domain_range=domain_range, cores=5)
         bl_tke = vvm_tools.blOther('TKE', 0.3, t_range, domain_range=domain_range)
         bl_ens = vvm_tools.blOther('ENS', 3e-5, t_range, domain_range=domain_range)
@@ -105,3 +107,4 @@ class VVMPlot:
         if path:
             plt.savefig(path, dpi=200)
         plt.show()
+
