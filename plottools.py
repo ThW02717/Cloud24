@@ -1,114 +1,93 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.cm as cm
+import matplotlib.colors as colors
 
 class VVMPlot:
     def __init__(self, fontsize=12, figsize=(6, 4), cmap='RdBu_r'):
-        """
-        Initialize the VVMPlot class.
-
-        Parameters
-        ----------
-        fontsize : int, optional
-            The font size for plot titles and labels (default is 12).
-        figsize : tuple, optional
-            The figure size of the plot (default is (6, 4)).
-        cmap : str, optional
-            The colormap for contour plots (default is 'RdBu_r').
-        """
         self.fontsize = fontsize
         self.figsize = figsize
         self.cmap = cmap
+        self.domain_urban = (None, None, None, None, 0, 64)    # domain_range=plotter.domain_urban
+        self.domain_grass = (None, None, None, None, 64, 128)  # domain_range=plotter.domain_grass
+        self.domain_all = (None, None, None, None, None, None)
 
-        self.domain_urban = (None, None, None, None, 0, 64)      # domain_range=plotter.domain_urban
-        self.domain_grass = (None, None, None, None, 64, 128)    # domain_range=plotter.domain_grass
-        self.domain_all   = (None, None, None, None, None, None) 
+    def _plot_contour_with_lines(self, T, Z, contourf_data, lines_data, tick, lab, title, r_title, folder_path=None, image_nickname=None):
+        """
+        A combined contour and line plot for boundary layer data and WTH.
+        """
+        plt.figure(figsize=(10, 6))
+        edge_value = max(-np.nanmin(contourf_data), np.nanmax(contourf_data))
+        clev = np.linspace(-edge_value,edge_value,40)
+        plt.contourf(T, Z, contourf_data, cmap='bwr', levels=clev)
+        cbar = plt.colorbar(label=r'$\overline{w^\prime \theta^\prime}$ [K m/s]')
+        
+        for label, data in lines_data.items():
+            plt.plot(T[0], data, label=label)
 
-    def _plot_contour(self, data, zc, title, path=None, levels=None):
-        """
-        Internal method for plotting contour and shading.
-        """
-        print("Data shape:", data.shape)  # Check the shape of the data
-        plt.figure(figsize=self.figsize)
-        if levels is None:
-            levels = np.linspace(np.nanmin(data), np.nanmax(data), 50)
-        plt.contourf(data, levels=levels, cmap=self.cmap, extend='both')
-        plt.colorbar(label=title)
-        plt.xlabel("Time", fontsize=self.fontsize)
-        plt.ylabel("Height (m)", fontsize=self.fontsize)
-        plt.title(title, fontsize=self.fontsize)
-        if path:
-            plt.savefig(path, dpi=200)
-        plt.show()
+        plt.legend(fontsize=12, loc='upper left')
+        plt.xlabel('Local Time')
+        plt.ylabel('Height (m)')
+        plt.tick_params(right=True, top=True)        
+        plt.xticks(tick, lab)
+        plt.title(title, fontproperties={'size':16, 'weight': 'bold'}, loc='left')
+        plt.title(r_title, fontproperties={'size':14}, loc='right')        
+        plt.legend()
+        plt.tight_layout()
+        if folder_path:
+            plt.savefig(f'{folder_path}/HW7-{image_nickname}.png', dpi=300)
 
-    def plot_bl(self, vvm_tools, t_range, domain_range=None, save_path=None):
-        """
-        Plots the five boundary layer height methods from the VVMTools class.
-
-        Parameters
-        ----------
-        vvm_tools : VVMTools
-            An instance of the VVMTools class used to retrieve data.
-        t_range : list
-            A list of time indices for the plot.
-        domain_range : tuple, optional
-            A tuple specifying the domain range in VVMTools. 
-            If None, defaults to urban domain.
-        save_path : str, optional
-            File path to save the figure.
-        """
+    def plot_bl(self, vvm_tools, t_range, domain_range=None, folder_path=None, sounding_name=None):
         zc = vvm_tools.get_var('zc', 0, numpy=True)
-
-        # Use predefined domain if domain_range is not provided
         if domain_range is None:
-            domain_range = self.domain_all  # Use urban domain as default
+            domain_range = self.domain_all
+            right_title = f'Domain: All, Sounding: #{sounding_name}'
+            image_nickname = f'S{sounding_name}_All'
+        elif domain_range == self.domain_urban:
+            right_title = f'Domain: Urban, Sounding: #{sounding_name}'            
+            image_nickname = f'S{sounding_name}_Urban'
+        elif domain_range == self.domain_grass:
+            right_title = f'Domain: Grass, Sounding: #{sounding_name}'
+            image_nickname = f'S{sounding_name}_Grass'
 
-        # Get boundary layer heights using different methods
         bl_grad = vvm_tools.func_time_parallel(vvm_tools.blGrad, t_range, domain_range=domain_range, cores=5)
-        print("bl_grad shape:", bl_grad.shape)
         bl_pointfive = vvm_tools.func_time_parallel(vvm_tools.blPointfive, t_range, domain_range=domain_range, cores=5)
         bl_tke = vvm_tools.blOther('TKE', 0.3, t_range, domain_range=domain_range)
         bl_ens = vvm_tools.blOther('ENS', 3e-5, t_range, domain_range=domain_range)
         bl_wth = vvm_tools.blOther('WTH', 0.01, t_range, domain_range=domain_range)
+        WTH = vvm_tools.func_time_parallel(vvm_tools.cal_WTH, t_range, domain_range=domain_range)
+        WTH = np.swapaxes(WTH, 0, 1)
+
+        T, Z = np.meshgrid(t_range, zc)
+
+        tick = np.arange(0, len(t_range)+1, 30)
+        lab = ['05', '06', '07', '08', '09', '10', '11', '12', '13'
+               , '14', '15', '16', '17', '18', '19', '20', '21',
+               '22', '23', '24', '01', '02', '03', '04', '05']
+        lab = lab[:len(tick)]
 
         bl_data = {
-            'PBL Grad Method': bl_grad,
-            'PBL Theta+0.5 Method': bl_pointfive,
-            'PBL TKE': bl_tke,
-            'PBL ENS': bl_ens,
-            'PBL WTH': bl_wth
+            'TKE = 0.3 [m$^{2}$/s$^{2}$]': bl_tke,
+            'ENS. = 3x10$^{-5}$ [1/s$^{2}$]': bl_ens,
+            'WTH = 0.01 [K m/s]': bl_wth,
+            'dθ/dz max': bl_grad,
+            'θ$_{sfc}$ +0.5K': bl_pointfive
         }
 
-        for method, data in bl_data.items():
-            self._plot_contour(data, zc, method, path=save_path)
-
-    def TKE_t_z(self, TKE_data, fontsize=None, figsize=None, cmap=None, levels=None, path=None):
-        """
-        Plots the TKE evolution according to height.
-
-        Parameters
-        ----------
-        TKE_data : 2D-ndarray
-            A 2D map for TKE mean in x-y dimension.
-        fontsize : int, optional
-            The font size for plot titles and labels (overrides the class-level fontsize).
-        figsize : tuple, optional
-            The figure size of the plot (overrides the class-level figsize).
-        cmap : str, optional
-            The colormap for the plot (overrides the class-level colormap).
-        levels : list, optional
-            Contour levels for the plot.
-        path : str, optional
-            File path to save the plot.
-        """
+        self._plot_contour_with_lines(T, Z, contourf_data=WTH, lines_data=bl_data, tick=tick, lab=lab,
+                                      title=r'Avg. $\overline{w^\prime \theta^\prime}$ & PBLH', r_title=right_title,
+                                      folder_path=folder_path, image_nickname=image_nickname)
+'''
+    def TKE_t_z(self, TKE_data, t_range, zc, fontsize=None, figsize=None, cmap=None, levels=None, path=None):
         fontsize = fontsize or self.fontsize
         figsize = figsize or self.figsize
         cmap = cmap or self.cmap
 
+        T, Z = np.meshgrid(t_range, zc)
+
         plt.figure(figsize=figsize)
         if levels is None:
             levels = np.linspace(np.nanmin(TKE_data), np.nanmax(TKE_data), 50)
-        plt.contourf(TKE_data, levels=levels, cmap=cmap, extend='both')
+        plt.contourf(T, Z, TKE_data, levels=levels, cmap=cmap, extend='both')
         plt.colorbar(label='TKE')
         plt.title('TKE Evolution with Height', fontsize=fontsize)
         plt.xlabel('Time', fontsize=fontsize)
@@ -116,4 +95,4 @@ class VVMPlot:
         if path:
             plt.savefig(path, dpi=200)
         plt.show()
-
+'''
