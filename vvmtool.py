@@ -256,6 +256,7 @@ class VVMTools:
 
 
     # Given any time-related function (e.g. def A(t)), the function will be parallelized
+    # Domain_range included
     def func_time_parallel(self, 
                            func,
                            time_steps=list(range(0, 720, 1)), 
@@ -271,7 +272,7 @@ class VVMTools:
 
         # Use multiprocessing to fetch variable data in parallel
         with multiprocessing.Pool(processes=cores) as pool:
-            results = pool.starmap(func, [(time, ) for time in time_steps])
+            results = pool.starmap(func, [(time, domain_range) for time in time_steps])
         
         # Combine and return the results
         return np.squeeze(np.array(results))
@@ -322,11 +323,22 @@ class VVMTools:
         return w_th
     
     ######################################################################################
-    ## 5 Kinds of Boundary Layer Height
-
+    ## 5 Kinds of Boundary Layer Height  in T, Z domain
     # max dtheta/dz
+    '''
+        Threshold:
+        TKE: 0.3
+        ENS: 3e-5
+        WTH: 0.01
+        
+        EX: blTKE=vvm.blOther('TKE', 0.3, t, domain_range = domain)
+            blENS=vvm.blOther('ENS', 3e-5, t, domain_range = domain)
+            blWTH=vvm.blOther('WTH', 0.01, t, domain_range = domain)
+            blGrad=vvm.func_time_parallel(vvm.blGrad, t, domain_range = domain)
+            blPointfive=vvm.func_time_parallel(vvm.blPointfive, t, domain_range = domain)
+    '''
     def blGrad(self, t, domain_range = (None, None, None, None, None, None)):
-        th = self.get_var('th', t, numpy=True, domain_range = domain_range, compute_mean = True, axis = (1,2))
+        th = self.get_var('th', t, numpy=True, domain_range = domain_range, compute_mean = True, axis = (1, 2))
         zc = self.get_var('zc', t, numpy=True)
         dth = np.gradient(th)
         max_index = np.argmax(dth)
@@ -344,13 +356,6 @@ class VVMTools:
         return pbl_depth
     
     # TKE, ENS, WTH
-    '''
-        Threshold:
-        TKE: 0.3
-        ENS: 3e-5
-        WTH: 0.01
-        EX: blTKE=vvm.blOther('TKE', 0.3, t, domain_range = domain)
-    '''
     def blOther(self, var_name, threshold, t, domain_range=(None, None, None, None, None, None)):
         zc = self.get_var("zc", 0).to_numpy()
         if var_name == "TKE":
