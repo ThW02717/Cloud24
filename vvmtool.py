@@ -271,7 +271,7 @@ class VVMTools:
 
         # Use multiprocessing to fetch variable data in parallel
         with multiprocessing.Pool(processes=cores) as pool:
-            results = pool.starmap(func, [(time, ) for time in time_steps])
+            results = pool.starmap(func, [(time, domain_range) for time in time_steps])
         
         # Combine and return the results
         return np.squeeze(np.array(results))
