@@ -6,7 +6,7 @@ import numpy as np
 import multiprocessing
 import datetime
 import logging
-
+from scipy.ndimage import uniform_filter1d
 class VVMTools:
     def __init__(self, case_path, debug_mode=False):
         self.CASEPATH = case_path
@@ -290,8 +290,7 @@ class VVMTools:
     def crossSection (self, var, time , y):
         variable = self.get_var(var , time, domain_range=(None, None, y, y+1, None, None), numpy=True)
         return variable
-    
-    
+
     ############################################################################################
     # TKE, ENS, Perturbation flux Domain Average
     def cal_TKE(self, t, domain_range=(None, None, None, None, None, None)):
@@ -313,6 +312,7 @@ class VVMTools:
     def cal_WTH(self, t, domain_range=(None, None, None, None, None, None)):
         w = self.get_var('w', t, domain_range = domain_range, numpy=True)
         th = self.get_var('th', t, domain_range = domain_range, numpy=True)
+        w_regrid = (w[1:]+w[:-1])/2
         w_mean = self.get_var('w', time=t, domain_range = domain_range, numpy=True, 
                               compute_mean=True, axis=(1, 2))[:, np.newaxis, np.newaxis]
         th_mean = self.get_var('th', time=t, domain_range = domain_range, numpy=True, 
@@ -323,19 +323,17 @@ class VVMTools:
         return w_th
     
     ######################################################################################
-    ## 5 Kinds of Boundary Layer Height  in T, Z domain
+    ## 7 Kinds of Boundary Layer Height  in T, Z domain
     # max dtheta/dz
     '''
         Threshold:
         TKE: 0.3
         ENS: 3e-5
-        WTH: 0.01
-        
         EX: blTKE=vvm.blOther('TKE', 0.3, t, domain_range = domain)
-            blENS=vvm.blOther('ENS', 3e-5, t, domain_range = domain)
-            blWTH=vvm.blOther('WTH', 0.01, t, domain_range = domain)
+  -m            blENS=vvm.blOther('ENS', 3e-5, t, domain_range = domain)
             blGrad=vvm.func_time_parallel(vvm.blGrad, t, domain_range = domain)
             blPointfive=vvm.func_time_parallel(vvm.blPointfive, t, domain_range = domain)
+            wthp, wthm, wthn = vvm.find_wth_boundary(t, 0.001, domain_range = domain)
     '''
     def blGrad(self, t, domain_range = (None, None, None, None, None, None)):
         th = self.get_var('th', t, numpy=True, domain_range = domain_range, compute_mean = True, axis = (1, 2))
@@ -374,3 +372,46 @@ class VVMTools:
                 h[i_index] = max(h[i_index], zc[j_index + 1])
 
         return h
+    
+    def find_wth_boundary(self, time_steps, threshold, domain_range=(None, None, None, None, None, None)):
+        wth_data = self.func_time_parallel(self.cal_WTH, time_steps, domain_range=domain_range, cores=20)
+        mask_array = np.where(wth_data >= 0, 1, -1)
+        h = self.DIM['zc']  
+        WTHp, WTHm, WTHn = np.zeros(len(time_steps)), np.zeros(len(time_steps)), np.zeros(len(time_steps))
+        
+        for idx in range(wth_data.shape[0]):
+            delta_mask = mask_array[idx, 1:] - mask_array[idx, :-1]
+            
+            if np.max(wth_data[idx]) < threshold:
+                lower_idx = mid_idx = upper_idx = 0
+            else:
+                # Find lower boundary (WTHp)
+                lower_indices = np.argwhere(delta_mask == -2)
+                lower_idx = lower_indices[0][0] + 1 if lower_indices.size > 0 else 0
+                
+                # Find mid boundary (WTHm)
+                mid_idx = np.argmin(wth_data[idx]) + 1
+                
+                # Find upper boundary (WTHn)
+                upper_indices = np.argwhere(delta_mask == 2)
+                upper_idx = upper_indices[0][0] + 1 if upper_indices.size > 0 else 0
+                
+            # Set upper boundary to zero if the maximum value after mid boundary is low
+            if np.max(wth_data[idx, mid_idx:]) < threshold:
+                upper_idx = 0
+            WTHp[idx] = h[lower_idx]
+            WTHm[idx] = h[mid_idx]
+            WTHn[idx] = h[upper_idx]
+
+
+        #smooth
+        window_size = 29  
+        half_window = window_size // 2
+        WTHp_smooth = np.convolve(WTHp, np.ones(window_size) / window_size, mode='valid')
+        WTHm_smooth = np.convolve(WTHm, np.ones(window_size) / window_size, mode='valid')
+        WTHn_smooth = np.convolve(WTHn, np.ones(window_size) / window_size, mode='valid')
+        WTHp_smooth = np.pad(WTHp_smooth, (half_window, half_window), mode='edge')
+        WTHm_smooth = np.pad(WTHm_smooth, (half_window, half_window), mode='edge')
+        WTHn_smooth = np.pad(WTHn_smooth, (half_window, half_window), mode='edge')
+
+        return WTHp_smooth, WTHm_smooth, WTHn_smooth
