@@ -6,7 +6,7 @@ import numpy as np
 import multiprocessing
 import datetime
 import logging
-
+from scipy.ndimage import uniform_filter1d
 class VVMTools:
     def __init__(self, case_path, debug_mode=False):
         self.CASEPATH = case_path
