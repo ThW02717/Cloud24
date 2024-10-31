@@ -297,8 +297,13 @@ class VVMTools:
         u = self.get_var("u", t, domain_range=domain_range, numpy=True)
         v = self.get_var("v", t, domain_range=domain_range, numpy=True)
         w = self.get_var("w", t, domain_range=domain_range, numpy=True)
-        TKE = np.mean(u ** 2 + v ** 2 + w ** 2, axis=(1, 2))
-        return TKE
+        u_regrid = (u[:, :, 1:] + u[:, :, :-1])[1:, 1:, :] / 2
+        v_regrid = (v[:, 1:, :] + v[:, :-1, :])[1:, :, 1:] / 2
+        w_regrid = (w[1:, :, :] + w[:-1, :, :])[:, 1:, 1:] / 2
+        TKE = u_regrid**2 + v_regrid**2 + w_regrid**2
+        
+        return np.nanmean(TKE, axis=(1,2))
+
 
     def cal_ENS(self, t, domain_range=(None, None, None, None, None, None)):
         xi = np.squeeze(self.get_var("xi", t, domain_range=domain_range).to_numpy())
@@ -330,7 +335,7 @@ class VVMTools:
         TKE: 0.3
         ENS: 3e-5
         EX: blTKE=vvm.blOther('TKE', 0.3, t, domain_range = domain)
-  -m            blENS=vvm.blOther('ENS', 3e-5, t, domain_range = domain)
+            blENS=vvm.blOther('ENS', 3e-5, t, domain_range = domain)
             blGrad=vvm.func_time_parallel(vvm.blGrad, t, domain_range = domain)
             blPointfive=vvm.func_time_parallel(vvm.blPointfive, t, domain_range = domain)
             wthp, wthm, wthn = vvm.find_wth_boundary(t, 0.001, domain_range = domain)
