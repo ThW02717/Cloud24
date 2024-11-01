@@ -345,7 +345,7 @@ class VVMTools:
         zc = self.get_var('zc', t, numpy=True)
         dth = np.gradient(th)
         max_index = np.argmax(dth)
-        pbl_depth = zc[max_index]
+        pbl_depth = zc[max_index] / 1000
         return pbl_depth
     
     # thata[0]+0.5
@@ -356,7 +356,7 @@ class VVMTools:
             if (th[i] >= th[0]+0.5).any():
                 pbl_depth = zc[i]
                 break
-        return pbl_depth
+        return pbl_depth / 1000
     
     # TKE, ENS, WTH
     def blOther(self, var_name, threshold, t, domain_range=(None, None, None, None, None, None)):
@@ -376,7 +376,7 @@ class VVMTools:
             if j_index + 1 < len(zc):
                 h[i_index] = max(h[i_index], zc[j_index + 1])
 
-        return h
+        return h / 1000
     
     def find_wth_boundary(self, time_steps, threshold, domain_range=(None, None, None, None, None, None)):
         wth_data = self.func_time_parallel(self.cal_WTH, time_steps, domain_range=domain_range, cores=20)
@@ -404,12 +404,11 @@ class VVMTools:
             # Set upper boundary to zero if the maximum value after mid boundary is low
             if np.max(wth_data[idx, mid_idx:]) < threshold:
                 upper_idx = 0
-            WTHp[idx] = h[lower_idx]
-            WTHm[idx] = h[mid_idx]
-            WTHn[idx] = h[upper_idx]
+            WTHp[idx] = h[lower_idx] / 1000
+            WTHm[idx] = h[mid_idx] / 1000
+            WTHn[idx] = h[upper_idx] /1000
 
-
-        #smooth
+        '''
         window_size = 29  
         half_window = window_size // 2
         WTHp_smooth = np.convolve(WTHp, np.ones(window_size) / window_size, mode='valid')
@@ -419,4 +418,7 @@ class VVMTools:
         WTHm_smooth = np.pad(WTHm_smooth, (half_window, half_window), mode='edge')
         WTHn_smooth = np.pad(WTHn_smooth, (half_window, half_window), mode='edge')
 
-        return WTHp_smooth, WTHm_smooth, WTHn_smooth
+        
+        '''
+        #smooth
+        return WTHp, WTHm ,WTHn
