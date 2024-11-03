@@ -379,46 +379,45 @@ class VVMTools:
         return h / 1000
     
     def find_wth_boundary(self, time_steps, threshold, domain_range=(None, None, None, None, None, None)):
+
         wth_data = self.func_time_parallel(self.cal_WTH, time_steps, domain_range=domain_range, cores=20)
         mask_array = np.where(wth_data >= 0, 1, -1)
-        h = self.DIM['zc']  
+        h = self.DIM['zc'] 
         WTHp, WTHm, WTHn = np.zeros(len(time_steps)), np.zeros(len(time_steps)), np.zeros(len(time_steps))
-        
+
         for idx in range(wth_data.shape[0]):
-            delta_mask = mask_array[idx, 1:] - mask_array[idx, :-1]
+            delta_mask = np.diff(mask_array[idx])
             
+            # threshold
             if np.max(wth_data[idx]) < threshold:
                 lower_idx = mid_idx = upper_idx = 0
             else:
-                # Find lower boundary (WTHp)
-                lower_indices = np.argwhere(delta_mask == -2)
-                lower_idx = lower_indices[0][0] + 1 if lower_indices.size > 0 else 0
+                # 1 to -1
+                lower_indices = np.where(delta_mask == -2)[0] + 1
+                lower_idx = lower_indices[0] if lower_indices.size > 0 else 0
                 
-                # Find mid boundary (WTHm)
+                # minimum negative
                 mid_idx = np.argmin(wth_data[idx]) + 1
                 
-                # Find upper boundary (WTHn)
-                upper_indices = np.argwhere(delta_mask == 2)
-                upper_idx = upper_indices[0][0] + 1 if upper_indices.size > 0 else 0
-                
-            # Set upper boundary to zero if the maximum value after mid boundary is low
-            if np.max(wth_data[idx, mid_idx:]) < threshold:
-                upper_idx = 0
+                # -1 to 1
+                upper_indices = np.where(delta_mask == 2)[0] + 1
+                upper_idx = upper_indices[0] if upper_indices.size > 0 else 0
+                if np.max(wth_data[idx, mid_idx:]) < threshold:
+                    upper_idx = 0
+            
             WTHp[idx] = h[lower_idx] / 1000
             WTHm[idx] = h[mid_idx] / 1000
-            WTHn[idx] = h[upper_idx] /1000
-
-        '''
-        window_size = 29  
-        half_window = window_size // 2
-        WTHp_smooth = np.convolve(WTHp, np.ones(window_size) / window_size, mode='valid')
-        WTHm_smooth = np.convolve(WTHm, np.ones(window_size) / window_size, mode='valid')
-        WTHn_smooth = np.convolve(WTHn, np.ones(window_size) / window_size, mode='valid')
-        WTHp_smooth = np.pad(WTHp_smooth, (half_window, half_window), mode='edge')
-        WTHm_smooth = np.pad(WTHm_smooth, (half_window, half_window), mode='edge')
-        WTHn_smooth = np.pad(WTHn_smooth, (half_window, half_window), mode='edge')
-
-        
-        '''
-        #smooth
-        return WTHp, WTHm ,WTHn
+            WTHn[idx] = h[upper_idx] / 1000
+            
+            '''
+            #smooth
+            window_size = 29  
+            half_window = window_size // 2
+            WTHp_smooth = np.convolve(WTHp, np.ones(window_size) / window_size, mode='valid')
+            WTHm_smooth = np.convolve(WTHm, np.ones(window_size) / window_size, mode='valid')
+            WTHn_smooth = np.convolve(WTHn, np.ones(window_size) / window_size, mode='valid')
+            WTHp_smooth = np.pad(WTHp_smooth, (half_window, half_window), mode='edge')
+            WTHm_smooth = np.pad(WTHm_smooth, (half_window, half_window), mode='edge')
+            WTHn_smooth = np.pad(WTHn_smooth, (half_window, half_window), mode='edge')
+            '''
+        return WTHp, WTHm, WTHn
