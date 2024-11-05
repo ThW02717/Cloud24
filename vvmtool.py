@@ -378,46 +378,45 @@ class VVMTools:
 
         return h / 1000
     
-    def find_wth_boundary(self, time_steps, threshold, domain_range=(None, None, None, None, None, None)):
+    def find_wth_boundary(self, time_steps, threshold, domain_range = (None, None, None, None, None, None)):
 
-        wth_data = self.func_time_parallel(self.cal_WTH, time_steps, domain_range=domain_range, cores=20)
-        mask_array = np.where(wth_data >= 0, 1, -1)
-        h = self.DIM['zc'] 
-        WTHp, WTHm, WTHn = np.zeros(len(time_steps)), np.zeros(len(time_steps)), np.zeros(len(time_steps))
+        # Calculate WTH values across time steps and domain
+        wth_values = self.func_time_parallel(self.cal_WTH, time_steps, domain_range = domain_range, cores=20)
+        sign_array = np.sign(wth_values)  # Sign array for detecting boundaries
+        height_levels = self.DIM['zc']
+        
+        # Initialize arrays for positive, min, and negative boundaries for each time step
+        positive_boundary = np.full(len(time_steps), 0.0)
+        min_boundary = np.full(len(time_steps), 0.0)
+        negative_boundary = np.full(len(time_steps), 0.0)
 
-        for idx in range(wth_data.shape[0]):
-            delta_mask = np.diff(mask_array[idx])
+        # Process each time step to identify boundaries based on threshold
+        for i in range(len(time_steps)):
+            wth_profile = wth_values[i]
             
-            # threshold
-            if np.max(wth_data[idx]) < threshold:
-                lower_idx = mid_idx = upper_idx = 0
+            # Check if the maximum WTH value meets the threshold; if not, boundaries remain at 0
+            if np.nanmax(wth_profile) >= threshold:
+                # Detect positive-to-negative and negative-to-positive transitions in the sign array
+                transition_points = np.diff(sign_array[i])
+
+                # Positive boundary: First positive-to-negative transition
+                pos_boundary_index = np.argmax(transition_points == -2) + 1
+                positive_boundary[i] = height_levels[pos_boundary_index] / 1000 if pos_boundary_index > 0 else 0.0
+
+                # Min boundary: Index of the minimum WTH value
+                min_boundary_index = np.nanargmin(wth_profile)
+                min_boundary[i] = height_levels[min_boundary_index] / 1000 if min_boundary_index > 0 else 0.0
+
+                # Negative boundary: First negative-to-positive transition after min boundary
+                neg_boundary_candidates = np.where(transition_points == 2)[0]
+                neg_boundary_index = next((x + 1 for x in neg_boundary_candidates if x >= min_boundary_index), None)
+                negative_boundary[i] = height_levels[neg_boundary_index] / 1000 if neg_boundary_index is not None else 0.0
+
+                # Ensure the negative boundary is above the threshold, otherwise set it to 0
+                if np.nanmax(wth_profile[min_boundary_index:]) < threshold:
+                    negative_boundary[i] = 0.0
             else:
-                # 1 to -1
-                lower_indices = np.where(delta_mask == -2)[0] + 1
-                lower_idx = lower_indices[0] if lower_indices.size > 0 else 0
-                
-                # minimum negative
-                mid_idx = np.argmin(wth_data[idx]) + 1
-                
-                # -1 to 1
-                upper_indices = np.where(delta_mask == 2)[0] + 1
-                upper_idx = upper_indices[0] if upper_indices.size > 0 else 0
-                if np.max(wth_data[idx, mid_idx:]) < threshold:
-                    upper_idx = 0
-            
-            WTHp[idx] = h[lower_idx] / 1000
-            WTHm[idx] = h[mid_idx] / 1000
-            WTHn[idx] = h[upper_idx] / 1000
-            
-            '''
-            #smooth
-            window_size = 29  
-            half_window = window_size // 2
-            WTHp_smooth = np.convolve(WTHp, np.ones(window_size) / window_size, mode='valid')
-            WTHm_smooth = np.convolve(WTHm, np.ones(window_size) / window_size, mode='valid')
-            WTHn_smooth = np.convolve(WTHn, np.ones(window_size) / window_size, mode='valid')
-            WTHp_smooth = np.pad(WTHp_smooth, (half_window, half_window), mode='edge')
-            WTHm_smooth = np.pad(WTHm_smooth, (half_window, half_window), mode='edge')
-            WTHn_smooth = np.pad(WTHn_smooth, (half_window, half_window), mode='edge')
-            '''
-        return WTHp, WTHm, WTHn
+                # If max value doesn't reach the threshold, all boundaries stay at 0.0 (default)
+                positive_boundary[i] = min_boundary[i] = negative_boundary[i] = 0.0
+
+        return positive_boundary, min_boundary, negative_boundary
